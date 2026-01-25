@@ -1,179 +1,222 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useMemo, useState } from "react";
 
 type Clip = {
+  id: string;
   start: number;
   end: number;
-  duration: number;
-  score: number;
-  text: string;
+  score?: number;
+  text?: string;
 };
 
+function fmt(sec: number) {
+  const s = Math.max(0, sec);
+  return `${s.toFixed(2)}s`;
+}
+
 export default function ClipsPage() {
-  const [clips, setClips] = useState<Clip[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-const [inputFile, setInputFile] = useState<string>("video.mp4");
-const [uploading, setUploading] = useState(false);
+  const [currentFile, setCurrentFile] = useState<string>("video.mp4");
+  const [uploading, setUploading] = useState(false);
+  const [exportingId, setExportingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function run() {
+  // Clips iniciais (igual seu print)
+  const [clips, setClips] = useState<Clip[]>([
+    {
+      id: "1",
+      start: 0,
+      end: 40,
+      score: 49.11,
+      text:
+        "Hoje eu vou te mostrar como ganhar dinheiro na internet... (texto exemplo)",
+    },
+  ]);
+
+  const duration = useMemo(() => {
+    if (!clips.length) return 0;
+    return clips.reduce((acc, c) => Math.max(acc, c.end - c.start), 0);
+  }, [clips]);
+
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploading(true);
+
+      // Envia para /api/upload (se existir no seu projeto)
+      const form = new FormData();
+      form.append("file", file);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: form,
+      });
+
+      // Se /api/upload não existir ou retornar HTML, vai quebrar aqui -> mostramos erro
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert(data?.error ?? "Falha no upload");
+        return;
+      }
+
+      const fileName =
+        data?.fileName || data?.filename || data?.name || data?.inputFile;
+
+      if (!fileName) {
+        alert("Upload ok, mas não veio fileName do servidor.");
+        return;
+      }
+
+      setCurrentFile(fileName);
+
+      // Tenta buscar highlights automaticamente (se existir)
+      // Se seu /api/highlights tiver outro formato, não tem problema: só não atualiza.
       try {
-        setLoading(true);
-        setErr(null);
-
-        const res = await fetch("/api/highlights", {
+        const h = await fetch("/api/highlights", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            segments: [
-              { start: 0, end: 6, text: "Hoje eu vou te mostrar como ganhar dinheiro na internet." },
-              { start: 6, end: 14, text: "Pouca gente fala sobre isso, mas existe um erro que quase todo iniciante comete." },
-              { start: 14, end: 26, text: "Se você evitar esse erro, suas chances aumentam muito." },
-              { start: 26, end: 40, text: "E no final do vídeo eu vou te mostrar uma dica prática." }
-            ]
-          })
+          body: JSON.stringify({ inputFile: fileName }),
         });
 
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.error ?? "Erro ao gerar cortes");
+        const hd = await h.json();
 
-        setClips(json.clips ?? []);
-      } catch (e: any) {
-        setErr(e.message);
-      } finally {
-        setLoading(false);
-      }
-    }
+        // Aceita alguns formatos comuns
+        const arr: any[] =
+          hd?.clips || hd?.data?.clips || hd?.highlights || hd?.data || [];
 
-    run();
-  }, []);
-
-  return (
-    <div style={{ padding: 20, fontFamily: "sans-serif", maxWidth: 900, margin: "0 auto" }}>
-      <h1 style={{ marginBottom: 6 }}>Clips (Base OpusClip)</h1>
-      <p style={{ marginTop: 0, opacity: 0.75 }}>
-        Aqui aparecem os melhores cortes com start/end/score. Depois a gente pluga vídeo e exportação.
-      </p>
-<div
-  style={{
-    marginBottom: 16,
-    padding: 12,
-    border: "1px solid rgba(255,255,255,0.15)",
-    borderRadius: 12,
-  }}
->
-  <b>Upload de vídeo</b>
-
-  <div
-    style={{
-      marginTop: 8,
-      display: "flex",
-      gap: 10,
-      flexWrap: "wrap",
-      alignItems: "center",
-    }}
-  >
-    <input
-      type="file"
-      accept="video/mp4,video/*"
-      onChange={async (e) => {
-        const f = e.target.files?.[0];
-        if (!f) return;
-
-        setUploading(true);
-        try {
-          const fd = new FormData();
-          fd.append("file", f);
-
-          const res = await fetch("/api/upload", {
-            method: "POST",
-            body: fd,
-          });
-          const json = await res.json();
-
-          if (!res.ok)
-            throw new Error(json?.error ?? "Falha no upload");
-
-          setInputFile(json.fileName);
-          alert("Upload OK! Arquivo: " + json.fileName);
-        } catch (err: any) {
-          alert("Erro no upload: " + err.message);
-        } finally {
-          setUploading(false);
+        if (Array.isArray(arr) && arr.length) {
+          const normalized: Clip[] = arr.map((x, i) => ({
+            id: String(x.id ?? i + 1),
+            start: Number(x.start ?? x.s ?? 0),
+            end: Number(x.end ?? x.e ?? 0),
+            score: x.score != null ? Number(x.score) : undefined,
+            text: x.text ?? x.caption ?? x.transcript ?? "",
+          }));
+          setClips(normalized.filter((c) => c.end > c.start));
         }
-      }}
-    />
+      } catch {
+        // sem highlights? segue com os clips atuais
+      }
+    } catch (err: any) {
+      alert(err?.message ?? "Erro no upload");
+    } finally {
+      setUploading(false);
+      // permite escolher o mesmo arquivo de novo
+      e.target.value = "";
+    }
+  }
 
-    <span style={{ opacity: 0.8 }}>
-      {uploading ? "Enviando..." : `Arquivo atual: ${inputFile}`}
-    </span>
-  </div>
-</div>
-
-      {loading && <p>Gerando cortes…</p>}
-      {err && <pre style={{ color: "crimson", whiteSpace: "pre-wrap" }}>{err}</pre>}
-
-      {!loading && !err && clips.length === 0 && <p>Nenhum corte apareceu.</p>}
-
-      <div style={{ display: "grid", gap: 12 }}>
-        {clips.map((c, i) => (
-          <div
-            key={i}
-            style={{
-              border: "1px solid rgba(255,255,255,0.15)",
-              borderRadius: 12,
-              padding: 14
-            }}
-          >
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
-              <b>#{i + 1}</b>
-              <span>⏱ {c.start.toFixed(2)}s → {c.end.toFixed(2)}s</span>
-              <span>📏 {c.duration.toFixed(2)}s</span>
-              <span>🔥 score {c.score.toFixed(2)}</span>
-            </div>
-
-            <div style={{ opacity: 0.9, lineHeight: 1.4 }}>
-              {c.text}
-            </div>
-            <button
-  onClick={async () => {
+  async function exportarCorte(clip: Clip) {
     try {
+      setExportingId(clip.id);
+
       const res = await fetch("/api/cut", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          inputFile: "video.mp4",
-          start: c.start,
-          end: c.end,
+          inputFile: currentFile,
+          start: clip.start,
+          end: clip.end,
         }),
       });
 
-      const json = await res.json();
-
-      if (json.ok) {
-        alert("Corte exportado! Veja em storage/outputs");
-      } else {
-        alert("Erro ao exportar: " + (json.error ?? "desconhecido"));
+      // Se der 404/500 e vier HTML, isso evita aquele erro de JSON inválido
+      const text = await res.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = null;
       }
-    } catch (e: any) {
-      alert("Erro: " + e.message);
-    }
-  }}
-  style={{
-    marginTop: 10,
-    padding: "8px 14px",
-    borderRadius: 8,
-    border: "none",
-    cursor: "pointer",
-  }}
->
-  Exportar corte
-</button>
 
+      if (!res.ok) {
+        alert(data?.error ?? text ?? "Falha ao exportar corte");
+        return;
+      }
+
+      const url = data?.url;
+      if (!url) {
+        alert("Cortou, mas não veio a URL do arquivo. (Esperado: data.url)");
+        return;
+      }
+
+      // abre o MP4 gerado
+      window.open(url, "_blank");
+    } catch (err: any) {
+      alert(err?.message ?? "Erro ao exportar");
+    } finally {
+      setExportingId(null);
+    }
+  }
+
+  return (
+    <div style={{ maxWidth: 900, margin: "32px auto", padding: "0 16px" }}>
+      <h1 style={{ fontSize: 28, marginBottom: 8 }}>Clips (Base OpusClip)</h1>
+      <p style={{ marginTop: 0, color: "#444" }}>
+        Aqui aparecem os melhores cortes com start/end/score. Depois a gente pluga
+        vídeo e exportação.
+      </p>
+
+      <div style={{ marginTop: 24, padding: 16, border: "1px solid #ddd", borderRadius: 12 }}>
+        <h2 style={{ marginTop: 0, fontSize: 18 }}>Upload de vídeo</h2>
+        <input type="file" accept="video/*" onChange={handleUpload} />
+        <div style={{ marginTop: 8, color: "#444" }}>
+          Arquivo atual: <b>{currentFile}</b>{" "}
+          {uploading ? <span style={{ marginLeft: 8 }}>(enviando...)</span> : null}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 24 }}>
+        {clips.map((c, idx) => (
+          <div
+            key={c.id}
+            style={{
+              padding: 16,
+              border: "1px solid #e5e5e5",
+              borderRadius: 12,
+              marginBottom: 12,
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>
+              #{idx + 1}{" "}
+              <span style={{ fontWeight: 400, marginLeft: 8 }}>
+                {fmt(c.start)} → {fmt(c.end)}{" "}
+                <span style={{ marginLeft: 10 }}>
+                  {(c.end - c.start).toFixed(2)}s
+                </span>
+                {typeof c.score === "number" ? (
+                  <span style={{ marginLeft: 10 }}>score {c.score.toFixed(2)}</span>
+                ) : null}
+              </span>
+            </div>
+
+            {c.text ? (
+              <p style={{ marginTop: 0, whiteSpace: "pre-wrap" }}>{c.text}</p>
+            ) : (
+              <p style={{ marginTop: 0, color: "#666" }}>(sem texto)</p>
+            )}
+
+            <button
+              onClick={() => exportarCorte(c)}
+              disabled={!!exportingId}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #222",
+                background: exportingId === c.id ? "#eee" : "#fff",
+                cursor: exportingId ? "not-allowed" : "pointer",
+              }}
+            >
+              {exportingId === c.id ? "Exportando..." : "Exportar corte"}
+            </button>
           </div>
         ))}
+
+        {!clips.length ? (
+          <div style={{ color: "#666" }}>Nenhum clip ainda.</div>
+        ) : null}
       </div>
     </div>
   );

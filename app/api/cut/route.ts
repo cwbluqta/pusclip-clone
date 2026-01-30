@@ -1,10 +1,10 @@
 // app/api/cut/route.ts
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
 import path from "path";
 import fs from "fs";
 import { spawn } from "child_process";
-
-export const runtime = "nodejs";
 
 function runFFmpeg(args: string[]) {
   return new Promise<void>((resolve, reject) => {
@@ -53,7 +53,6 @@ export async function POST(req: Request) {
     const outName = `${Date.now()}_${start.toFixed(2)}_${end.toFixed(2)}.mp4`;
     const outPath = path.join(outputsDir, outName);
 
-    // ✅ RE-ENCODE SEMPRE (acaba com vídeo colorido/bugado)
     await runFFmpeg([
       "-y",
       "-ss",

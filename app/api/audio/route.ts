@@ -1,40 +1,57 @@
+export const runtime = "nodejs";
+
 import { NextResponse } from "next/server";
 import { exec } from "child_process";
 import path from "path";
 import fs from "fs";
 
 export async function POST() {
-  const inputPath = path.join(process.cwd(), "videos", "video.mp4");
-  const outputPath = path.join(process.cwd(), "videos", "audio.mp3");
+  try {
+    // Caminhos absolutos
+    const videosDir = path.join(process.cwd(), "videos");
+    const inputPath = path.join(videosDir, "video.mp4");
+    const outputPath = path.join(videosDir, "audio.mp3");
 
-  if (!fs.existsSync(inputPath)) {
+    // Garante que a pasta existe
+    if (!fs.existsSync(videosDir)) {
+      fs.mkdirSync(videosDir, { recursive: true });
+    }
+
+    // Verifica se o vídeo existe
+    if (!fs.existsSync(inputPath)) {
+      return NextResponse.json(
+        { error: "video.mp4 não encontrado na pasta /videos" },
+        { status: 400 }
+      );
+    }
+
+    // Comando FFmpeg
+    const cmd = `ffmpeg -y -i "${inputPath}" -vn -ac 1 -ar 16000 -b:a 64k "${outputPath}"`;
+
+    // Executa FFmpeg
+    await new Promise<void>((resolve, reject) => {
+      exec(cmd, (error, stdout, stderr) => {
+        if (error) {
+          reject(stderr || stdout || error.message);
+          return;
+        }
+        resolve();
+      });
+    });
+
+    // Retorno de sucesso
+    return NextResponse.json({
+      success: true,
+      audio: "/videos/audio.mp3",
+    });
+
+  } catch (err) {
     return NextResponse.json(
-      { error: "video.mp4 não encontrado em /videos" },
-      { status: 400 }
+      {
+        error: "Erro ao extrair áudio",
+        details: String(err),
+      },
+      { status: 500 }
     );
   }
-
-  // Extrai áudio e salva como MP3
-  const cmd = `ffmpeg -y -i "${inputPath}" -vn -ac 1 -ar 16000 -b:a 64k "${outputPath}"`;
-
-  return await new Promise((resolve) => {
-    exec(cmd, (error, stdout, stderr) => {
-      if (error) {
-        resolve(
-          NextResponse.json(
-            { error: "Falhou ao converter para áudio", details: String(stderr || stdout || error.message) },
-            { status: 500 }
-          )
-        );
-        return;
-      }
-
-      resolve(
-        NextResponse.json({
-          success: true,
-          path: "/videos/audio.mp3",
-        })
-      );
-    });
-  });
 }

@@ -1,18 +1,40 @@
 // app/api/transcribe/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import OpenAI from "openai";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+const TMP_DOWNLOAD_DIR = path.join("/tmp", "opusclip-downloads");
+
+export function GET() {
+  return NextResponse.json(
+    {
+      ok: true,
+      message: "Envie um POST com { fileName } para transcrever o áudio.",
+    },
+    { status: 200 }
+  );
+}
+
+export async function POST(req: NextRequest) {
   try {
-    const audioPath = path.join(process.cwd(), "videos", "audio.mp3");
+    const { fileName } = await req.json();
+
+    if (!fileName || typeof fileName !== "string") {
+      return NextResponse.json(
+        { error: "fileName inválido" },
+        { status: 400 }
+      );
+    }
+
+    const safeName = path.basename(fileName);
+    const audioPath = path.join(TMP_DOWNLOAD_DIR, safeName);
 
     if (!fs.existsSync(audioPath)) {
       return NextResponse.json(
-        { error: "audio.mp3 não encontrado em /videos" },
+        { error: "Arquivo não encontrado em /tmp" },
         { status: 400 }
       );
     }

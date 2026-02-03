@@ -1,5 +1,70 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Architecture (OpusClip-style)
+
+**Goal:** keep Vercel only for UI/Frontend and move heavy video processing to a dedicated backend that can run `yt-dlp`/`ffmpeg`. The Next.js app calls the backend over HTTP and never runs `yt-dlp` locally.
+
+### Backend downloader service (Railway/Render/Fly)
+
+This repo ships a minimal backend in `backend/` with a single `/download` endpoint that runs `yt-dlp`.
+
+**Key capabilities**
+
+- Receives a YouTube URL
+- Runs `yt-dlp` to download video or audio
+- Returns a public URL for the generated file
+
+**Environment variables (backend)**
+
+```bash
+PORT=8080
+PUBLIC_BASE_URL=https://seu-backend.exemplo.com
+DOWNLOADER_TOKEN=token-super-seguro
+DOWNLOAD_DIR=/app/downloads
+```
+
+**Local run**
+
+```bash
+cd backend
+npm install
+npm run dev
+```
+
+**Deploy notes**
+
+- Install `yt-dlp` and `ffmpeg` on the hosting provider (Railway/Render support build steps / apt packages).
+- Make sure the runtime can write to `DOWNLOAD_DIR`.
+- Configure `PUBLIC_BASE_URL` with the deployed hostname so `fileUrl` comes back fully qualified.
+
+### Vercel (Frontend only)
+
+The Next.js app exposes `/api/download` as a proxy to your backend. Configure these env vars in Vercel:
+
+```bash
+DOWNLOADER_URL=https://seu-backend.exemplo.com
+DOWNLOADER_TOKEN=token-super-seguro
+```
+
+If your frontend is hosted elsewhere or needs a custom base URL, set:
+
+```bash
+VITE_API_BASE_URL=https://seu-frontend.exemplo.com
+```
+
+**Frontend usage (example)**
+
+```ts
+const response = await fetch("/api/download", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ url: "https://www.youtube.com/watch?v=...", mode: "video" }),
+});
+
+const data = await response.json();
+// data = { ok: true, fileUrl: "https://..." }
+```
+
 ## Getting Started
 
 First, run the development server:

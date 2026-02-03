@@ -3,27 +3,77 @@
 import { useState } from "react";
 
 export default function Home() {
-  const [fileName, setFileName] = useState("audio.mp3");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [fileName, setFileName] = useState("");
   const [out, setOut] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
-  async function testarTranscribe() {
+  const apiBaseUrl =
+    (import.meta as { env?: { VITE_API_BASE_URL?: string } }).env
+      ?.VITE_API_BASE_URL ?? "";
+
+  const downloadEndpoint = apiBaseUrl
+    ? `${apiBaseUrl}/api/download`
+    : "/api/download";
+  const transcribeEndpoint = apiBaseUrl
+    ? `${apiBaseUrl}/api/transcribe`
+    : "/api/transcribe";
+
+  async function baixarETranscrever() {
     setLoading(true);
     setOut(null);
 
     try {
-      // ✅ endpoint correto (existe no seu projeto): /api/transcribe
-      const res = await fetch("/api/transcribe", {
+      const downloadRes = await fetch(downloadEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileName }),
+        body: JSON.stringify({ url: youtubeUrl }),
       });
 
-      const data = await res.json().catch(() => ({
+      const downloadData = await downloadRes.json().catch(() => ({
         error: "Resposta não é JSON",
       }));
 
-      setOut({ ok: res.ok, status: res.status, data });
+      if (!downloadRes.ok) {
+        setOut({
+          step: "download",
+          ok: false,
+          status: downloadRes.status,
+          data: downloadData,
+        });
+        return;
+      }
+
+      const nextFileName = downloadData?.fileName;
+      if (!nextFileName) {
+        setOut({
+          step: "download",
+          ok: false,
+          error: "fileName não retornado pelo /api/download.",
+          data: downloadData,
+        });
+        return;
+      }
+
+      setFileName(nextFileName);
+
+      const transcribeRes = await fetch(transcribeEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: nextFileName }),
+      });
+
+      const transcribeData = await transcribeRes.json().catch(() => ({
+        error: "Resposta não é JSON",
+      }));
+
+      setOut({
+        step: "transcribe",
+        ok: transcribeRes.ok,
+        status: transcribeRes.status,
+        download: downloadData,
+        transcribe: transcribeData,
+      });
     } catch (err: any) {
       setOut({ ok: false, error: err?.message ?? String(err) });
     } finally {
@@ -40,9 +90,12 @@ export default function Home() {
         margin: "0 auto",
       }}
     >
-      <h1 style={{ fontSize: 22, marginBottom: 8 }}>Teste /api/transcribe</h1>
+      <h1 style={{ fontSize: 22, marginBottom: 8 }}>
+        Teste /api/download → /api/transcribe
+      </h1>
       <p style={{ marginTop: 0, opacity: 0.75 }}>
-        Este teste chama <code>/api/transcribe</code> com <code>{"{ fileName }"}</code>.
+        Este fluxo chama <code>/api/download</code> com <code>{"{ url }"}</code> e,
+        em seguida, <code>/api/transcribe</code> com <code>{"{ fileName }"}</code>.
       </p>
 
       <div
@@ -55,14 +108,10 @@ export default function Home() {
           borderRadius: 12,
         }}
       >
-        <label style={{ fontSize: 13, opacity: 0.8 }}>
-          Nome do arquivo de áudio (ex: <b>audio.mp3</b>)
-        </label>
-
         <input
-          value={fileName}
-          onChange={(e) => setFileName(e.target.value)}
-          placeholder="audio.mp3"
+          value={youtubeUrl}
+          onChange={(e) => setYoutubeUrl(e.target.value)}
+          placeholder="https://www.youtube.com/watch?v=..."
           style={{
             padding: 12,
             borderRadius: 10,
@@ -72,9 +121,30 @@ export default function Home() {
           disabled={loading}
         />
 
+        <div style={{ fontSize: 12, opacity: 0.75 }}>
+          Base URL atual: <code>{apiBaseUrl || "mesma origem (Vercel)"}</code>
+        </div>
+
+        <label style={{ fontSize: 13, opacity: 0.8 }}>
+          Arquivo baixado (preenchido após o download)
+        </label>
+
+        <input
+          value={fileName}
+          readOnly
+          placeholder="download-xxxx.mp4"
+          style={{
+            padding: 12,
+            borderRadius: 10,
+            border: "1px solid rgba(0,0,0,0.12)",
+            fontSize: 14,
+            background: "rgba(0,0,0,0.04)",
+          }}
+        />
+
         <button
-          onClick={testarTranscribe}
-          disabled={loading || !fileName.trim()}
+          onClick={baixarETranscrever}
+          disabled={loading || !youtubeUrl.trim()}
           style={{
             padding: "12px 14px",
             borderRadius: 10,
@@ -85,7 +155,7 @@ export default function Home() {
             cursor: loading ? "not-allowed" : "pointer",
           }}
         >
-          {loading ? "Transcrevendo..." : "Testar POST"}
+          {loading ? "Baixando e transcrevendo..." : "Baixar e transcrever"}
         </button>
       </div>
 
@@ -104,8 +174,8 @@ export default function Home() {
       </pre>
 
       <div style={{ marginTop: 14, fontSize: 12, opacity: 0.75 }}>
-        Se retornar erro dizendo que <code>fileName</code> não existe, então o endpoint espera outro campo.
-        Aí você me cola o arquivo <code>app/api/transcribe/route.ts</code> que eu ajusto o body certinho.
+        O download salva em <code>/tmp</code> e retorna o <code>fileName</code> para
+        ser usado pela transcrição.
       </div>
     </main>
   );

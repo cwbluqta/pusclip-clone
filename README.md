@@ -12,13 +12,12 @@ This repo ships a minimal backend in `backend/` with a single `/download` endpoi
 
 - Receives a YouTube URL
 - Runs `yt-dlp` to download video or audio
-- Returns a public URL for the generated file
+- Returns `{ fileName }` for the generated file (the file is served from `/files/:fileName`)
 
 **Environment variables (backend)**
 
 ```bash
 PORT=8080
-PUBLIC_BASE_URL=https://seu-backend.exemplo.com
 DOWNLOADER_TOKEN=token-super-seguro
 DOWNLOAD_DIR=/app/downloads
 ```
@@ -35,7 +34,6 @@ npm run dev
 
 - Install `yt-dlp` and `ffmpeg` on the hosting provider (Railway/Render support build steps / apt packages).
 - Make sure the runtime can write to `DOWNLOAD_DIR`.
-- Configure `PUBLIC_BASE_URL` with the deployed hostname so `fileUrl` comes back fully qualified.
 
 ### Vercel (Frontend only)
 
@@ -44,6 +42,7 @@ The Next.js app exposes `/api/download` as a proxy to your backend. Configure th
 ```bash
 DOWNLOADER_URL=https://seu-backend.exemplo.com
 DOWNLOADER_TOKEN=token-super-seguro
+OPENAI_API_KEY=sk-...
 ```
 
 If your frontend is hosted elsewhere or needs a custom base URL, set:
@@ -58,11 +57,20 @@ VITE_API_BASE_URL=https://seu-frontend.exemplo.com
 const response = await fetch("/api/download", {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ url: "https://www.youtube.com/watch?v=...", mode: "video" }),
+  body: JSON.stringify({ url: "https://www.youtube.com/watch?v=..." }),
 });
 
 const data = await response.json();
-// data = { ok: true, fileUrl: "https://..." }
+// data = { ok: true, fileName: "abc123-title.mp4" }
+
+const transcriptResponse = await fetch("/api/transcribe", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ fileName: data.fileName }),
+});
+
+const transcript = await transcriptResponse.json();
+// transcript = { success: true, text: "..." }
 ```
 
 ## Getting Started

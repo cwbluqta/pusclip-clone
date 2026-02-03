@@ -174,7 +174,7 @@ export default function Home() {
       </pre>
 
       <div style={{ marginTop: 14, fontSize: 12, opacity: 0.75 }}>
-        O download salva em <code>/tmp</code> e retorna o <code>fileName</code> para
+        O download é feito pelo serviço externo e retorna o <code>fileName</code> para
         ser usado pela transcrição.
       </div>
     </main>

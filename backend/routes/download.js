@@ -58,14 +58,7 @@ function runYtDlp(args) {
   });
 }
 
-function buildPublicUrl({ baseUrl, jobId, fileName }) {
-  if (!baseUrl) {
-    return `/files/${jobId}/${encodeURIComponent(fileName)}`;
-  }
-  return `${baseUrl.replace(/\/$/, "")}/files/${jobId}/${encodeURIComponent(fileName)}`;
-}
-
-function downloadRouter({ downloadDir, baseUrl, authToken }) {
+function downloadRouter({ downloadDir, authToken }) {
   return async (req, res) => {
     if (authToken) {
       const header = req.headers.authorization || "";
@@ -82,29 +75,26 @@ function downloadRouter({ downloadDir, baseUrl, authToken }) {
       return;
     }
 
-    const jobId = crypto.randomUUID();
-    const jobDir = path.join(downloadDir, jobId);
-    ensureDirectory(jobDir);
+    ensureDirectory(downloadDir);
 
-    const outputTemplate = path.join(jobDir, "%(title).80s-%(id)s.%(ext)s");
+    const jobId = crypto.randomUUID();
+    const outputTemplate = path.join(
+      downloadDir,
+      `${jobId}-%(title).80s-%(id)s.%(ext)s`
+    );
 
     try {
       const args = buildYtDlpArgs({ url, outputTemplate, mode });
       await runYtDlp(args);
 
-      const files = await fs.readdir(jobDir);
-      if (!files.length) {
+      const files = await fs.readdir(downloadDir);
+      const matchingFiles = files.filter((file) => file.startsWith(jobId));
+      if (!matchingFiles.length) {
         res.status(500).json({ ok: false, error: "Nenhum arquivo gerado." });
         return;
       }
 
-      const fileName = files[0];
-      res.json({
-        ok: true,
-        jobId,
-        fileName,
-        fileUrl: buildPublicUrl({ baseUrl, jobId, fileName }),
-      });
+      res.json({ fileName: matchingFiles[0] });
     } catch (error) {
       res.status(500).json({
         ok: false,

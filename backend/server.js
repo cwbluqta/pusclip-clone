@@ -23,7 +23,6 @@ app.use(
   "/download",
   downloadRouter({
     downloadDir: DOWNLOAD_DIR,
-    baseUrl: process.env.PUBLIC_BASE_URL || "",
     authToken: process.env.DOWNLOADER_TOKEN || "",
   })
 );

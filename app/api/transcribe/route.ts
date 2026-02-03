@@ -1,12 +1,7 @@
-// app/api/transcribe/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-import OpenAI from "openai";
+import OpenAI, { toFile } from "openai";
 
 export const runtime = "nodejs";
-
-const TMP_DOWNLOAD_DIR = path.join("/tmp", "opusclip-downloads");
 
 export function GET() {
   return NextResponse.json(
@@ -29,27 +24,54 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const safeName = path.basename(fileName);
-    const audioPath = path.join(TMP_DOWNLOAD_DIR, safeName);
+    const DOWNLOADER_URL = process.env.DOWNLOADER_URL;
+    const DOWNLOADER_TOKEN = process.env.DOWNLOADER_TOKEN;
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-    if (!fs.existsSync(audioPath)) {
+    if (!DOWNLOADER_URL || !DOWNLOADER_TOKEN) {
       return NextResponse.json(
-        { error: "Arquivo não encontrado em /tmp" },
-        { status: 400 }
+        { error: "DOWNLOADER_URL / DOWNLOADER_TOKEN não configurados na Vercel" },
+        { status: 500 }
       );
     }
 
-    const client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+    if (!OPENAI_API_KEY) {
+      return NextResponse.json(
+        { error: "OPENAI_API_KEY não configurado" },
+        { status: 500 }
+      );
+    }
+
+    const fileUrl = `${DOWNLOADER_URL.replace(/\/$/, "")}/files/${encodeURIComponent(
+      fileName
+    )}`;
+
+    const downloadResponse = await fetch(fileUrl, {
+      headers: {
+        Authorization: `Bearer ${DOWNLOADER_TOKEN}`,
+      },
     });
 
+    if (!downloadResponse.ok) {
+      return NextResponse.json(
+        { error: "Falha ao baixar o arquivo do downloader." },
+        { status: 500 }
+      );
+    }
+
+    const contentType = downloadResponse.headers.get("content-type") || undefined;
+    const arrayBuffer = await downloadResponse.arrayBuffer();
+    const file = await toFile(Buffer.from(arrayBuffer), fileName, {
+      type: contentType,
+    });
+
+    const client = new OpenAI({ apiKey: OPENAI_API_KEY });
+
     const transcription = await client.audio.transcriptions.create({
-      file: fs.createReadStream(audioPath),
+      file,
       model: "gpt-4o-mini-transcribe",
     });
 
-    // ✅ NA VERCEL NÃO PODE SALVAR EM ARQUIVO (filesystem read-only)
-    // então só retornamos o texto
     return NextResponse.json({
       success: true,
       text: transcription.text,

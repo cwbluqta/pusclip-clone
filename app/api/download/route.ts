@@ -1,8 +1,6 @@
-export const runtime = "nodejs";
-
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
-import path from "path";
+
+export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,34 +10,37 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "URL inválida" }, { status: 400 });
     }
 
-    const outputPath = path.join(process.cwd(), "videos", "video.mp4");
+    // URL do seu serviço downloader (Render/Railway/Fly)
+    const DOWNLOADER_URL = process.env.DOWNLOADER_URL;
+    const DOWNLOADER_TOKEN = process.env.DOWNLOADER_TOKEN;
 
-    // Comando: baixa MP4 no caminho escolhido
-    const cmd = `yt-dlp -f mp4 -o "${outputPath}" "${url}"`;
+    if (!DOWNLOADER_URL || !DOWNLOADER_TOKEN) {
+      return NextResponse.json(
+        { error: "DOWNLOADER_URL / DOWNLOADER_TOKEN não configurados na Vercel" },
+        { status: 500 }
+      );
+    }
 
-    return await new Promise((resolve) => {
-      exec(cmd, (error, stdout, stderr) => {
-        if (error) {
-          resolve(
-            NextResponse.json(
-              {
-                error: "Falhou ao baixar o vídeo",
-                details: String(stderr || stdout || error.message),
-              },
-              { status: 500 }
-            )
-          );
-          return;
-        }
-
-        resolve(
-          NextResponse.json({
-            success: true,
-            path: "/videos/video.mp4",
-          })
-        );
-      });
+    const r = await fetch(`${DOWNLOADER_URL}/download`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${DOWNLOADER_TOKEN}`,
+      },
+      body: JSON.stringify({ url }),
     });
+
+    const data = await r.json().catch(() => ({}));
+
+    if (!r.ok) {
+      return NextResponse.json(
+        { error: "Downloader falhou", details: data },
+        { status: 500 }
+      );
+    }
+
+    // data precisa vir tipo: { ok:true, fileUrl:"https://....mp4" } ou parecido
+    return NextResponse.json(data);
   } catch (e: any) {
     return NextResponse.json(
       { error: "Erro interno", details: String(e?.message ?? e) },

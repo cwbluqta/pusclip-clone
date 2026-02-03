@@ -1,3 +1,4 @@
+// app/api/transcribe/route.ts
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
@@ -25,13 +26,11 @@ export async function POST() {
       model: "gpt-4o-mini-transcribe",
     });
 
-    const outPath = path.join(process.cwd(), "videos", "transcription.txt");
-    fs.writeFileSync(outPath, transcription.text, "utf8");
-
+    // ✅ NA VERCEL NÃO PODE SALVAR EM ARQUIVO (filesystem read-only)
+    // então só retornamos o texto
     return NextResponse.json({
       success: true,
       text: transcription.text,
-      savedAs: "/videos/transcription.txt",
     });
   } catch (e: any) {
     return NextResponse.json(

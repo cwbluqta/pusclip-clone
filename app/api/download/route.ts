@@ -1,65 +1,54 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-export const runtime = "nodejs";
-
-export function GET() {
-  return NextResponse.json(
-    {
-      ok: true,
-      message: "Envie um POST com { url } para baixar o vídeo no backend.",
-    },
-    { status: 200 }
-  );
-}
-
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const { url } = await req.json();
+    const body = await req.json().catch(() => ({} as any));
+    const url = body?.url;
 
     if (!url || typeof url !== "string") {
-      return NextResponse.json({ error: "URL inválida" }, { status: 400 });
+      return NextResponse.json({ error: "url required" }, { status: 400 });
     }
 
-    const DOWNLOADER_URL = process.env.DOWNLOADER_URL;
-    const DOWNLOADER_TOKEN = process.env.DOWNLOADER_TOKEN;
+    const base = process.env.DOWNLOADER_URL;
+    const token = process.env.DOWNLOADER_TOKEN;
 
-    if (!DOWNLOADER_URL || !DOWNLOADER_TOKEN) {
+    if (!base) {
       return NextResponse.json(
-        { error: "DOWNLOADER_URL / DOWNLOADER_TOKEN não configurados na Vercel" },
+        { error: "missing env DOWNLOADER_URL" },
+        { status: 500 }
+      );
+    }
+    if (!token) {
+      return NextResponse.json(
+        { error: "missing env DOWNLOADER_TOKEN" },
         { status: 500 }
       );
     }
 
-    const r = await fetch(`${DOWNLOADER_URL}/download`, {
+    const r = await fetch(`${base}/download`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${DOWNLOADER_TOKEN}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ url }),
     });
 
-    const data = await r.json().catch(() => ({}));
-
-    if (!r.ok) {
-      return NextResponse.json(
-        { error: "Downloader falhou", details: data },
-        { status: 500 }
-      );
+    const text = await r.text();
+    let data: any = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = { raw: text };
     }
 
-    const fileName = data?.fileName;
-    if (!fileName || typeof fileName !== "string") {
-      return NextResponse.json(
-        { error: "Downloader não retornou fileName." },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ ok: true, fileName });
-  } catch (e: any) {
     return NextResponse.json(
-      { error: "Erro interno", details: String(e?.message ?? e) },
+      { ok: r.ok, status: r.status, from: "downloader", data },
+      { status: r.status }
+    );
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: "api/download crashed", message: err?.message || String(err) },
       { status: 500 }
     );
   }

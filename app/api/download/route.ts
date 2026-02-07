@@ -1,5 +1,15 @@
 import { NextResponse } from "next/server";
 
+const corsHeaders = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "POST, OPTIONS",
+  "access-control-allow-headers": "authorization, content-type",
+};
+
+export function OPTIONS() {
+  return new Response(null, { status: 204, headers: corsHeaders });
+}
+
 export async function POST(req: Request) {
   try {
     const { url, format = "mp3" } = await req.json();
@@ -18,7 +28,8 @@ export async function POST(req: Request) {
       );
     }
 
-    const r = await fetch(`${base}/download`, {
+    const baseUrl = base.replace(/\/$/, "");
+    const r = await fetch(`${baseUrl}/api/download`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -33,12 +44,14 @@ export async function POST(req: Request) {
       return NextResponse.json(data, { status: r.status });
     }
 
+    const fileUrl = new URL(`/api/output/${data.id}`, req.url).toString();
+
     return NextResponse.json({
       ok: true,
       id: data.id,
       filename: data.filename,
       // usamos o output que já existe
-      fileUrl: `/api/output/${data.id}`,
+      fileUrl,
     });
   } catch (err: any) {
     return NextResponse.json(

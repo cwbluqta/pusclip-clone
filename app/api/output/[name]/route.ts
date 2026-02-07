@@ -1,5 +1,15 @@
 import { NextResponse } from "next/server";
 
+const corsHeaders = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, OPTIONS",
+  "access-control-allow-headers": "authorization, content-type",
+};
+
+export function OPTIONS() {
+  return new Response(null, { status: 204, headers: corsHeaders });
+}
+
 export async function GET(
   _req: Request,
   ctx: { params: { name: string } } | { params: Promise<{ name: string }> }
@@ -28,7 +38,8 @@ export async function GET(
     );
   }
 
-  const upstream = await fetch(`${base.replace(/\/$/, "")}/files/${name}`, {
+  const baseUrl = base.replace(/\/$/, "");
+  const upstream = await fetch(`${baseUrl}/api/output/${name}`, {
     headers: { authorization: `Bearer ${token}` },
   });
 

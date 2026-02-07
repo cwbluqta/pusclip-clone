@@ -1,42 +1,50 @@
+import { NextResponse } from "next/server";
+
 export async function GET(
   _req: Request,
-  { params }: { params: { name: string } }
+  ctx: { params: { name: string } } | { params: Promise<{ name: string }> }
 ) {
-  const { name } = params;
+  // compatível com Next que passa params normal ou como Promise
+  const paramsAny: any = (ctx as any).params;
+  const name: string | undefined =
+    typeof paramsAny?.then === "function"
+      ? (await paramsAny)?.name
+      : paramsAny?.name;
+
+  if (!name) {
+    return NextResponse.json(
+      { error: "id required", debug: { gotParams: paramsAny } },
+      { status: 400 }
+    );
+  }
 
   const base = process.env.DOWNLOADER_URL;
   const token = process.env.DOWNLOADER_TOKEN;
 
   if (!base || !token) {
-    return new Response("DOWNLOADER_URL / DOWNLOADER_TOKEN not set", {
-      status: 500,
-    });
+    return NextResponse.json(
+      { error: "DOWNLOADER_URL / DOWNLOADER_TOKEN not set" },
+      { status: 500 }
+    );
   }
 
-  if (!name) {
-    return new Response("id required", { status: 400 });
-  }
-
-  const upstream = await fetch(`${base}/files/${name}`, {
-    headers: {
-      authorization: `Bearer ${token}`,
-    },
+  const upstream = await fetch(`${base.replace(/\/$/, "")}/files/${name}`, {
+    headers: { authorization: `Bearer ${token}` },
   });
 
   if (!upstream.ok) {
-    const msg = await upstream.text();
-    return new Response(msg, { status: upstream.status });
+    const msg = await upstream.text().catch(() => "");
+    return new Response(msg || "Upstream error", { status: upstream.status });
   }
 
   const headers = new Headers();
-  const ct = upstream.headers.get("content-type");
-  const cd = upstream.headers.get("content-disposition");
+  headers.set(
+    "content-type",
+    upstream.headers.get("content-type") || "application/octet-stream"
+  );
 
-  if (ct) headers.set("content-type", ct);
+  const cd = upstream.headers.get("content-disposition");
   if (cd) headers.set("content-disposition", cd);
 
-  return new Response(upstream.body, {
-    status: 200,
-    headers,
-  });
+  return new Response(upstream.body, { status: 200, headers });
 }

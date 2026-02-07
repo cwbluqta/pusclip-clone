@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({} as any));
-    const url = body?.url;
+    const { url, format = "mp3" } = await req.json();
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "url required" }, { status: 400 });
@@ -12,15 +11,9 @@ export async function POST(req: Request) {
     const base = process.env.DOWNLOADER_URL;
     const token = process.env.DOWNLOADER_TOKEN;
 
-    if (!base) {
+    if (!base || !token) {
       return NextResponse.json(
-        { error: "missing env DOWNLOADER_URL" },
-        { status: 500 }
-      );
-    }
-    if (!token) {
-      return NextResponse.json(
-        { error: "missing env DOWNLOADER_TOKEN" },
+        { error: "DOWNLOADER_URL / DOWNLOADER_TOKEN not set" },
         { status: 500 }
       );
     }
@@ -28,27 +21,28 @@ export async function POST(req: Request) {
     const r = await fetch(`${base}/download`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, format }),
     });
 
-    const text = await r.text();
-    let data: any = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = { raw: text };
+    const data = await r.json();
+
+    if (!r.ok) {
+      return NextResponse.json(data, { status: r.status });
     }
 
-    return NextResponse.json(
-      { ok: r.ok, status: r.status, from: "downloader", data },
-      { status: r.status }
-    );
+    return NextResponse.json({
+      ok: true,
+      id: data.id,
+      filename: data.filename,
+      // usamos o output que já existe
+      fileUrl: `/api/output/${data.id}`,
+    });
   } catch (err: any) {
     return NextResponse.json(
-      { error: "api/download crashed", message: err?.message || String(err) },
+      { error: "internal_error", details: String(err?.message ?? err) },
       { status: 500 }
     );
   }
